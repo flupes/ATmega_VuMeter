@@ -43,7 +43,7 @@ Even double this size would still fit on our 2K RAM minus the LED library!
 
 #### Implementation
 
-Implement a double buffer of 244 x 10 bits samples.
+Implement a double buffer of 288 x 10 bits samples.
 
 
 ## References

@@ -12,7 +12,7 @@ const uint32_t kAdcAcquisitionCycles = 13;
 const uint32_t kSampleFrequency =
     F_CPU / kAdcClockPrescaler / kAdcAcquisitionCycles;
 
-// Collection of sound envelope over 40ms (25Hz)
+// Collection of sound envelope over 40ms to capture down to 25Hz frequencies
 const uint16_t kMeasurementPeriodMs = 40;
 
 // Rounded samples required for one measurement
