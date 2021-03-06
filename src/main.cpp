@@ -41,12 +41,16 @@ const float kRmsRef = 2.0;
 // pseudoDb = kSaturationGain * log (rms / kRmsRef)
 const float kSaturationGain = 254.9 / log(kSaturationRms / kRmsRef);
 
+const float kNightMaxRms = 80;
+const float kDayMaxRms = 130;
+
 const uint8_t kFlashingCyclesCount = 250 / kMeasurementPeriodMs;
 const uint8_t kFlashingLoops = 15;
 
 void loop() {
-  static float topRms = 100.0;
-  static float gain = 249.0 / log(topRms / kRmsRef);
+  static float topRms = kDayMaxRms;
+  // static float topRms = kNightMaxRms;
+  static float gain = 249.9 / log(topRms / kRmsRef);
   static float loudRms = 0.8 * topRms;
 
   static size_t levelsHead = 0;
