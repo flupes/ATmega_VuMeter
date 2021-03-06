@@ -34,7 +34,7 @@ uint16_t* const kBufferHead[2] = {gSamples[0], gSamples[1]};
 uint16_t* const kBufferEnd[2] = {gSamples[1],
                                  gSamples[0] + 2 * kSamplesPerMeasurement};
 
-void configure_audio(uint8_t adcChannel, uint8_t clockPrescaler = 128);
+void configure_audio(uint8_t adcChannel, uint8_t clockPrescaler = kAdcClockPrescaler);
 
 float compute_rms(const uint8_t buffer);
 
