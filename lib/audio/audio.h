@@ -38,4 +38,6 @@ void configure_audio(uint8_t adcChannel, uint8_t clockPrescaler = kAdcClockPresc
 
 float compute_rms(const uint8_t buffer);
 
+void window_min_max(const uint8_t buffer, uint16_t &min, uint16_t &max);
+
 #endif

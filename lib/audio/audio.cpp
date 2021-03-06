@@ -1,23 +1,23 @@
 #include "audio.h"
 
-#define USE_SERIAL 1
-
-#ifdef USE_SERIAL
 #include <Arduino.h>
-#endif
 
 uint16_t gSamples[2][kSamplesPerMeasurement];
 uint16_t volatile gMeasurementsCount = 0;
 uint8_t volatile gCurrentBuffer = 0;
 
 void audio_error(uint8_t code) {
-// Not sure what to do if we do not have serial line, so just stop everything
-#ifdef USE_SERIAL
-  Serial.print("Audio Error: ");
-  Serial.println(code);
-#endif
-  while (1)
-    ;
+  pinMode(LED_BUILTIN, OUTPUT);
+  sei();
+  while (1) {
+    for (uint8_t l = 0; l < code; l++) {
+      digitalWrite(LED_BUILTIN, HIGH);
+      delay(400);
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(200);
+    }
+    delay(800);
+  }
 }
 
 void configure_audio(uint8_t adcChannel, uint8_t clockPrescaler) {
@@ -27,16 +27,17 @@ void configure_audio(uint8_t adcChannel, uint8_t clockPrescaler) {
   ADCSRB = 0;  // clear ADCSRB register
 
   if (adcChannel > 7) {
-    audio_error(1);
+    audio_error(7);
   }
-  ADMUX = adcChannel & 0x07;  // set analog input pin
-  ADMUX |= (1 << REFS0);      // set reference voltage
+  ADMUX = adcChannel;     // set analog input pin
+  ADMUX |= (1 << REFS0);  // set reference voltage
 
   uint32_t clock = F_CPU / clockPrescaler;
   if (clock > 200000) {
+    audio_error(5);
     // Future work: use 8 bits only for high sampling frequencies
-    ADMUX |= (1 << ADLAR);  // left align ADC value to 8 bits from ADCH register
-    audio_error(2);
+    // left align ADC value to 8 bits from ADCH register
+    // ADMUX |= (1 << ADLAR);
   }
 
   switch (clockPrescaler) {
@@ -80,15 +81,29 @@ float compute_rms(const uint8_t buffer) {
     int16_t val = *(ptr++) - 512;
     sqsum += val * val;
   }
-
   return sqrt((float)sqsum / (float)kSamplesPerMeasurement);
+}
+
+void window_min_max(const uint8_t buffer, uint16_t &min, uint16_t &max) {
+  uint16_t *ptr = kBufferHead[buffer];
+  max = 0;
+  min = 1 << 11;
+  while (ptr < kBufferEnd[buffer]) {
+    if (*ptr < min) {
+      min = *ptr;
+    }
+    if (*ptr > max) {
+      max = *ptr;
+    }
+    ptr++;
+  }
 }
 
 ISR(ADC_vect) {
   static uint8_t *byteSlot = kSamplesBuffer1;
   *(byteSlot++) = ADCL;
   *(byteSlot++) = ADCH;
-  
+
   if (byteSlot < kSamplesBuffer2) {
     gCurrentBuffer = 0;
   } else {
