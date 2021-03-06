@@ -33,7 +33,7 @@ void configure_audio(uint8_t adcChannel, uint8_t clockPrescaler) {
   ADMUX |= (1 << REFS0);  // set reference voltage
 
   uint32_t clock = F_CPU / clockPrescaler;
-  if (clock > 200000) {
+  if (clock > 200000) { 
     audio_error(5);
     // Future work: use 8 bits only for high sampling frequencies
     // left align ADC value to 8 bits from ADCH register

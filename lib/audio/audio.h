@@ -40,4 +40,6 @@ float compute_rms(const uint8_t buffer);
 
 void window_min_max(const uint8_t buffer, uint16_t &min, uint16_t &max);
 
+void audio_error(uint8_t code);
+
 #endif
