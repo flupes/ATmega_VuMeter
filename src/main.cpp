@@ -58,7 +58,13 @@ void loop() {
   static uint8_t flashingLoops = 0;
   static uint8_t cycleCount = 0;
 
+  static uint32_t elapsed[4] = {0, 0, 0, 0};
+  static uint32_t timing;
+  static uint16_t samplesCounter = 0;
+  static uint8_t statCounter = 0;
+
   if (processedBuffer == gCurrentBuffer) {
+    uint32_t t0 = micros();
     uint16_t countStart = gMeasurementsCount;
     uint8_t bufferToProcess = 1 - processedBuffer;
 
@@ -90,6 +96,9 @@ void loop() {
       }
     }
 
+    uint32_t t1 = micros();
+    elapsed[0] += t1 - t0;
+
     // Fill the strip
     size_t index = (levelsHead + 1) % kNumberOfLeds;  // oldest reading first
     for (size_t i = 0; i < kNumberOfLeds; i++) {
@@ -99,6 +108,9 @@ void loop() {
         index = 0;
       };
     }
+
+    uint32_t t2 = micros();
+    elapsed[1] += t2 - t1;
 
     // Display new pattern
     FastLED.show();
@@ -112,6 +124,34 @@ void loop() {
 
     if ((gMeasurementsCount - countStart) > kSamplesPerMeasurement / 2) {
       audio_error(11);
+    }
+
+    statCounter++;
+    uint32_t t3 = micros();
+    elapsed[2] += t3 - t2;
+    elapsed[3] += t3 - t0;
+
+    if (statCounter >= 100) {
+      uint32_t period = t3 - timing;
+      Serial.print("average active loop time: rms=");
+      Serial.print(1E-3f * elapsed[0] / 100);
+      Serial.print("ms, set=");
+      Serial.print(1E-3f * elapsed[1] / 100);
+      Serial.print("ms, show=");
+      Serial.print(1E-3f * elapsed[2] / 100);
+      Serial.print("ms --> total=");
+      Serial.print(1E-3f * elapsed[3] / 100);
+
+      Serial.print(" | sampling frequency (kHz) : ");
+      Serial.print(1E3f * (gMeasurementsCount - samplesCounter) / period);
+      Serial.println();
+
+      for (size_t i = 0; i < 4; i++) {
+        elapsed[i] = 0;
+      }
+      samplesCounter = gMeasurementsCount;
+      statCounter = 0;
+      timing = micros();
     }
   }
 }
