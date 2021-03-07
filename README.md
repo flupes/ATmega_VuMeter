@@ -45,6 +45,22 @@ Even double this size would still fit on our 2K RAM minus the LED library!
 
 Implement a double buffer of 288 x 10 bits samples.
 
+## FastLED and audio interactions
+
+The [FastLED doc](https://github.com/FastLED/FastLED/wiki/Interrupt-problems) indicates that it
+takes 30us to update one WS2812 pixel , and that FastLED disable interrupts duing the data transmission. With 60 LEDs, this amounts to ~1.8ms, which seems to be confirmed by the timing
+measurements (~1.4ms, not sure how it could be shorter unless micros is not accurate enough).
+
+If the FastLED.show() was totatlly disabling interrupt during the full update, it means that we could loose ~13 samples for each show (every 40ms = 25Hz).
+
+This is probably why the measured sampling frequency is 7.69kHz without FastLED and only 7.47kHz
+for the full application.
+Naive math: 7.69 * (288-13)/288 = 7.34
+
+Updating the strip by segments is not really an option since this would simply introduce a lag.
+There is likely no good solution beside upgrading the LED strip and/or micro-processor.
+
+Note: visually, this not detrimental. This is equivalent to loose sampling for <2ms every 40ms.
 
 ## References
 
