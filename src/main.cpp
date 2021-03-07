@@ -15,10 +15,10 @@ uint8_t gLevelsRingBuffer[kNumberOfLeds];
 uint8_t gHuesTable[255];
 
 // Smaller RMS computed when mic is very quiet
-const float kRmsRef = 2.0;
+const float kRmsRef = 3.0;
 
 // Value under which it is considered super quiet
-const float kRmsThreshold = 5.0;
+const float kRmsThreshold = 5.2;
 
 // Max RMS acceptable at night
 const float kNightMaxRms = 60.0;
@@ -28,6 +28,12 @@ const float kDayMaxRms = 120.0;
 
 const uint8_t kButtonLedPin = 11;
 const uint8_t kButtonInputPin = 12;
+
+// Number of seconds before declaring quiet time
+const uint16_t kQuietSeconds = 20;
+
+const uint16_t kNightBrightness = 90;
+const uint16_t kDayBrightness = 140;
 
 uint8_t gNightTime = 1;
 
@@ -73,7 +79,7 @@ void loop() {
   static uint32_t elapsed[4] = {0, 0, 0, 0};
   static uint32_t timing;
   static uint16_t samplesCounter = 0;
-  static uint16_t quietCounter = 25 * 12;
+  static uint16_t quietCounter = 25 * kQuietSeconds;
   static uint8_t breathingCounter = 0;
   static uint8_t statCounter = 0;
   static bool buttonDown = false;
@@ -130,7 +136,7 @@ void loop() {
         quietCounter--;
       }
     } else {
-      quietCounter = 25 * 20;
+      quietCounter = 25 * kQuietSeconds;
     }
 
     // Detect above desirable level
@@ -142,7 +148,7 @@ void loop() {
     uint32_t t1 = micros();
     elapsed[0] += t1 - t0;
 
-    const uint8_t low = 12;
+    const uint8_t low = 6;
     const uint8_t high = 24;
     if (quietCounter == 0) {
       uint8_t blue = gLeds[0].blue;
@@ -163,7 +169,7 @@ void loop() {
         breathingCounter += 2;
       }
     } else {
-      uint8_t val = 120;
+      uint8_t val = gNightTime ? kNightBrightness : kDayBrightness;
       // Start flashing when loud
       if (flashingLoops > 0) {
         val = (flashingLoops % 2 == 0) ? 31 : 255;
@@ -179,7 +185,7 @@ void loop() {
       // Fill the strip
       size_t index = (levelsHead + 1) % kNumberOfLeds;  // oldest reading first
       for (size_t i = 0; i < kNumberOfLeds; i++) {
-        uint8_t hue = map(gLevelsRingBuffer[index++], 16, 255, 96, -16);
+        uint8_t hue = map(gLevelsRingBuffer[index++], 4, 255, 96, -16);
         gLeds[i].setHSV(hue, 255, val);
         if (index >= kNumberOfLeds) {
           index = 0;
