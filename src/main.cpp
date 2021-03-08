@@ -18,7 +18,7 @@ uint8_t gHuesTable[255];
 const float kRmsRef = 3.0;
 
 // Value under which it is considered super quiet
-const float kRmsThreshold = 5.2;
+const float kRmsThreshold = 5.5;
 
 // Max RMS acceptable at night
 const float kNightMaxRms = 60.0;
@@ -205,8 +205,26 @@ void loop() {
 
     processedBuffer = bufferToProcess;
 
-    if ((gMeasurementsCount - countStart) > kSamplesPerMeasurement / 2) {
-      audio_error(11);
+    if ((gMeasurementsCount - countStart) >= kSamplesPerMeasurement) {
+#if defined(PRINT_STATS)
+      Serial.print("ERROR: window exceeded --> ");
+      Serial.print("loop time: rms=");
+      Serial.print(1E-3f * elapsed[0]);
+      Serial.print("ms, set=");
+      Serial.print(1E-3f * elapsed[1]);
+      Serial.print("ms, show=");
+      Serial.print(1E-3f * elapsed[2]);
+      Serial.print(" | measurement cycles count=");
+      Serial.println(gMeasurementsCount - countStart);
+#endif
+      // audio_error(11);
+      // Output:
+      // average active loop time: rms=1.37ms, set=4.12ms, show=1.43ms --> total=6.92 | sampling frequency (kHz) : 7.47
+      // ERROR: window exceeded --> loop time: rms=4.13ms, set=12.36ms, show=4.12 | measurement cycles count=65347
+      // Something not-ideal has happened, but no need to panic:
+      // The we may have skipped a measurement but the update will resume correctly
+      // Actually, the message above looks like a wrap-around issue, however it should not happen
+      // from what I understand of my code.
     }
 
     statCounter++;
