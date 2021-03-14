@@ -47,11 +47,14 @@ Implement a double buffer of 288 x 10 bits samples.
 
 ## FastLED and audio interactions
 
-The [FastLED doc](https://github.com/FastLED/FastLED/wiki/Interrupt-problems) indicates that it
-takes 30us to update one WS2812 pixel , and that FastLED disable interrupts duing the data transmission. With 60 LEDs, this amounts to ~1.8ms, which seems to be confirmed by the timing
-measurements (~1.4ms, not sure how it could be shorter unless micros is not accurate enough).
+The [FastLED doc](https://github.com/FastLED/FastLED/wiki/Interrupt-problems)
+indicates that it takes 30us to update one WS2812 pixel , and that FastLED
+disable interrupts duing the data transmission. With 60 LEDs, this amounts to
+~1.8ms, which seems to be confirmed by the timing measurements (~1.4ms, not sure
+how it could be shorter unless micros is not accurate enough).
 
-If the FastLED.show() was totatlly disabling interrupt during the full update, it means that we could loose ~13 samples for each show (every 40ms = 25Hz).
+If the FastLED.show() was totatlly disabling interrupt during the full update,
+it means that we could loose ~13 samples for each show (every 40ms = 25Hz).
 
 This is probably why the measured sampling frequency is 7.69kHz without FastLED and only 7.47kHz
 for the full application.
