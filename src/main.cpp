@@ -15,17 +15,17 @@ uint8_t gLevelsRingBuffer[kNumberOfLeds];
 uint8_t gHuesTable[255];
 
 // Smaller RMS computed when mic is very quiet
-const float kRmsRef = 3.0;
+const float kRmsRef = 3.0f;
 
 // Value under which it is considered quiet enough to turn on the breathing
 // pattern
-const float kRmsThreshold = 6.0;
+const float kRmsThreshold = 6.0f;
 
 // Max RMS acceptable at night
-const float kNightMaxRms = 70.0;
+const float kNightMaxRms = 60.0f;
 
 // Max RMS acceptable during daytime
-const float kDayMaxRms = 120.0;
+const float kDayMaxRms = 120.0f;
 
 const uint8_t kButtonLedPin = 11;
 const uint8_t kButtonInputPin = 12;
@@ -43,9 +43,9 @@ const uint16_t kQuietSeconds = 20;
 const uint16_t kNightBrightness = 90;
 const uint16_t kDayBrightness = 140;
 
-float gSilenceFactor = 0.75f;
+float gSilenceFactor = 1.0f;
 uint8_t gNightTime = 1;
-uint8_t gDoorClosed = 0;
+uint8_t gDoorClosed = 1;
 
 uint16_t gAnalogOffset = 0;
 float gRmsOffset = 0.0f;
@@ -212,6 +212,7 @@ void loop() {
     if (rms > topRms) {
       rms = topRms;
     }
+
     float gain = 249.9 / log(topRms / kRmsRef);
     float loudRms = 0.8 * topRms;
 
@@ -364,7 +365,6 @@ void loop() {
 // Memory footprint:
 // RAM:   [========= ]  85.8% (used 1757 bytes from 2048 bytes)
 // Flash: [===       ]  34.2% (used 9792 bytes from 28672 bytes)
-
 
 // Output:
 // avg. loop: rms=1.35ms, set=4.10ms, show=1.41ms --> total=6.87 | Sampling Freq (kHz) : 7.47
