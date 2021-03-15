@@ -176,7 +176,7 @@ void processDigitalInputs() {
   }
 
   if (lastState != gDoorClosed) {
-    gSilenceFactor = gDoorClosed ? 1.0f : 0.75f;
+    gSilenceFactor = gDoorClosed ? 1.0f : 0.5f;
     Serial.print(F("Door State: "));
     Serial.println(gDoorClosed);
     lastState = gDoorClosed;
