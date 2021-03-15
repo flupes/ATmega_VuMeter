@@ -7,7 +7,7 @@
 #define LED_TYPE WS2812
 #define COLOR_ORDER GRB
 
-#define PRINT_STATS
+// #define PRINT_STATS
 
 const size_t kNumberOfLeds = 60;
 CRGB gLeds[kNumberOfLeds];
@@ -17,11 +17,12 @@ uint8_t gHuesTable[255];
 // Smaller RMS computed when mic is very quiet
 const float kRmsRef = 3.0;
 
-// Value under which it is considered super quiet
-const float kRmsThreshold = 5.5;
+// Value under which it is considered quiet enough to turn on the breathing
+// pattern
+const float kRmsThreshold = 6.0;
 
 // Max RMS acceptable at night
-const float kNightMaxRms = 60.0;
+const float kNightMaxRms = 70.0;
 
 // Max RMS acceptable during daytime
 const float kDayMaxRms = 120.0;
@@ -29,13 +30,25 @@ const float kDayMaxRms = 120.0;
 const uint8_t kButtonLedPin = 11;
 const uint8_t kButtonInputPin = 12;
 
+const uint8_t kAudioAnalogPin = 2;
+
+const uint8_t kLightLevelPin = 8;
+const uint8_t kReedRelayPin = 4;
+
+const uint8_t kSensitivityPotPin = A4;
+
 // Number of seconds before declaring quiet time
 const uint16_t kQuietSeconds = 20;
 
 const uint16_t kNightBrightness = 90;
 const uint16_t kDayBrightness = 140;
 
+float gSilenceFactor = 0.75f;
 uint8_t gNightTime = 1;
+uint8_t gDoorClosed = 0;
+
+uint16_t gAnalogOffset = 0;
+float gRmsOffset = 0.0f;
 
 void setup() {
   Serial.begin(115200);
@@ -47,9 +60,36 @@ void setup() {
   digitalWrite(kButtonLedPin, gNightTime);
   pinMode(kButtonInputPin, INPUT);
 
-  configure_audio(2);
+  pinMode(kLightLevelPin, INPUT);
+  pinMode(kReedRelayPin, INPUT);
 
   delay(3000);  // 3 second delay for recovery
+
+  Serial.print(F("Sampling Period :             "));
+  Serial.print(kMeasurementPeriodMs);
+  Serial.println(F(" ms"));
+
+  Serial.print(F("Sampling Frequency :          "));
+  Serial.print(kSampleFrequency);
+  Serial.println((" Hz"));
+
+  Serial.print(F("Samples per RMS measurement : "));
+  Serial.print(kSamplesPerMeasurement);
+  Serial.println(F(" count"));
+
+  // Read audio sensitivity from potentiometer (only at startup since after that
+  // we use a custom free-run reading with interrupts)
+  gAnalogOffset = analogRead(kSensitivityPotPin);
+
+  // 5K pot is creating a voltage divisor with a ~5K resistor
+  int16_t offset = map(gAnalogOffset, 520, 1023, -100, 100);
+  gRmsOffset = 0.5f * offset;
+
+  Serial.print(F("RMS Offset = "));
+  Serial.println(gRmsOffset);
+
+  // Configure the special anolog read for audio
+  configure_audio(kAudioAnalogPin);
 
   // tell FastLED about the LED strip configuration
   FastLED.addLeds<LED_TYPE, DATA_PIN, COLOR_ORDER>(gLeds, kNumberOfLeds);
@@ -70,6 +110,79 @@ void setup() {
 const uint8_t kFlashingCyclesCount = 250 / kMeasurementPeriodMs;
 const uint8_t kFlashingLoops = 15;
 
+void processDigitalInputs() {
+  static uint8_t lastLight = gNightTime;
+  static uint8_t lastState = gDoorClosed;
+
+  static bool buttonDown = false;
+  static bool buttonPressed = false;
+  static bool buttonActedOn = false;
+
+  static uint16_t bounceCounts[2] = {0, 0};
+  const uint8_t kDebounceCounter = 20;
+
+  uint8_t buttonState = digitalRead(kButtonInputPin);
+  if (buttonState == 0) {
+    if (buttonDown) {
+      buttonPressed = true;
+    }
+    buttonDown = true;
+  } else {
+    buttonDown = false;
+    buttonPressed = false;
+    buttonActedOn = false;
+  }
+
+  if (buttonPressed) {
+    if (!buttonActedOn) {
+      Serial.println(F("Button Pressed!"));
+      buttonActedOn = true;
+    }
+  }
+
+  uint8_t dark = digitalRead(kLightLevelPin);
+  if (dark) {
+    if (bounceCounts[0] < kDebounceCounter) {
+      bounceCounts[0]++;
+    } else {
+      gNightTime = 1;
+    }
+  } else {
+    if (bounceCounts[0] > 0) {
+      bounceCounts[0]--;
+    } else {
+      gNightTime = 0;
+    }
+  }
+
+  if (lastLight != gNightTime) {
+    digitalWrite(kButtonLedPin, gNightTime);
+    lastLight = gNightTime;
+  }
+
+  uint8_t shut = digitalRead(kReedRelayPin);
+  if (shut) {
+    if (bounceCounts[1] < kDebounceCounter) {
+      bounceCounts[1]++;
+    } else {
+      gDoorClosed = 1;
+    }
+  } else {
+    if (bounceCounts[1] > 0) {
+      bounceCounts[1]--;
+    } else {
+      gDoorClosed = 0;
+    }
+  }
+
+  if (lastState != gDoorClosed) {
+    gSilenceFactor = gDoorClosed ? 1.0f : 0.75f;
+    Serial.print(F("Door State: "));
+    Serial.println(gDoorClosed);
+    lastState = gDoorClosed;
+  }
+}
+
 void loop() {
   static size_t levelsHead = 0;
   static uint8_t processedBuffer = 1;
@@ -77,35 +190,14 @@ void loop() {
   static uint8_t cycleCount = 0;
 
   static uint32_t elapsed[4] = {0, 0, 0, 0};
-  static uint32_t timing;
+  static uint32_t timing = 0;
   static uint16_t samplesCounter = 0;
   static uint16_t quietCounter = 25 * kQuietSeconds;
   static uint8_t breathingCounter = 0;
   static uint8_t statCounter = 0;
-  static bool buttonDown = false;
-  static bool buttonPressed = false;
-  static bool buttonActedOn = false;
 
   if (processedBuffer == gCurrentBuffer) {
-    uint8_t buttonState = digitalRead(kButtonInputPin);
-    if (buttonState == 0) {
-      if (buttonDown) {
-        buttonPressed = true;
-      }
-      buttonDown = true;
-    } else {
-      buttonDown = false;
-      buttonPressed = false;
-      buttonActedOn = false;
-    }
-
-    if (buttonPressed) {
-      if (!buttonActedOn) {
-        gNightTime = 1 - gNightTime;
-        digitalWrite(kButtonLedPin, gNightTime);
-        buttonActedOn = true;
-      }
-    }
+    processDigitalInputs();
 
     uint32_t t0 = micros();
     uint16_t countStart = gMeasurementsCount;
@@ -113,7 +205,10 @@ void loop() {
     float rms = compute_rms(bufferToProcess);
 
     // Store the last sound level
-    float topRms = gNightTime ? kNightMaxRms : kDayMaxRms;
+    float topRms = kDayMaxRms;
+    if (gNightTime) {
+      topRms = gSilenceFactor * (kNightMaxRms + gRmsOffset);
+    }
     if (rms > topRms) {
       rms = topRms;
     }
@@ -207,24 +302,25 @@ void loop() {
 
     if ((gMeasurementsCount - countStart) >= kSamplesPerMeasurement) {
 #if defined(PRINT_STATS)
-      Serial.print("ERROR: window exceeded --> ");
-      Serial.print("loop time: rms=");
+      Serial.print(F("ERROR: window exceeded --> "));
+      Serial.print(F("loop time: rms="));
       Serial.print(1E-3f * elapsed[0]);
-      Serial.print("ms, set=");
+      Serial.print(F("ms, set="));
       Serial.print(1E-3f * elapsed[1]);
-      Serial.print("ms, show=");
+      Serial.print(F("ms, show="));
       Serial.print(1E-3f * elapsed[2]);
-      Serial.print(" | measurement cycles count=");
+      Serial.print(F(" | measurement cycles count="));
       Serial.println(gMeasurementsCount - countStart);
 #endif
       // audio_error(11);
       // Output:
-      // average active loop time: rms=1.37ms, set=4.12ms, show=1.43ms --> total=6.92 | sampling frequency (kHz) : 7.47
-      // ERROR: window exceeded --> loop time: rms=4.13ms, set=12.36ms, show=4.12 | measurement cycles count=65347
-      // Something not-ideal has happened, but no need to panic:
-      // The we may have skipped a measurement but the update will resume correctly
-      // Actually, the message above looks like a wrap-around issue, however it should not happen
-      // from what I understand of my code.
+      // average active loop time: rms=1.37ms, set=4.12ms, show=1.43ms -->
+      // total=6.92 | sampling frequency (kHz) : 7.47 ERROR: window exceeded -->
+      // loop time: rms=4.13ms, set=12.36ms, show=4.12 | measurement cycles
+      // count=65347 Something not-ideal has happened, but no need to panic: The
+      // we may have skipped a measurement but the update will resume correctly
+      // Actually, the message above looks like a wrap-around issue, however it
+      // should not happen from what I understand of my code.
     }
 
     statCounter++;
@@ -235,16 +331,16 @@ void loop() {
     if (statCounter >= 100) {
 #if defined(PRINT_STATS)
       uint32_t period = t3 - timing;
-      Serial.print("average active loop time: rms=");
+      Serial.print(F("avg. loop: rms="));
       Serial.print(1E-3f * elapsed[0] / 100);
-      Serial.print("ms, set=");
+      Serial.print(F("ms, set="));
       Serial.print(1E-3f * elapsed[1] / 100);
-      Serial.print("ms, show=");
+      Serial.print(F("ms, show="));
       Serial.print(1E-3f * elapsed[2] / 100);
-      Serial.print("ms --> total=");
+      Serial.print(F("ms --> total="));
       Serial.print(1E-3f * elapsed[3] / 100);
 
-      Serial.print(" | sampling frequency (kHz) : ");
+      Serial.print(F(" | Sampling Freq (kHz) : "));
       Serial.print(1E3f * (gMeasurementsCount - samplesCounter) / period);
       Serial.println();
 
@@ -265,7 +361,15 @@ void loop() {
   }
 }
 
+// Memory footprint:
+// RAM:   [========= ]  85.8% (used 1757 bytes from 2048 bytes)
+// Flash: [===       ]  34.2% (used 9792 bytes from 28672 bytes)
+
+
 // Output:
-// average active loop time: rms=1.07ms, set=4.10ms, show=1.41ms --> total=6.58
-// | sampling frequency (kHz) : 7.47 average active loop time: rms=1.07ms,
-// set=4.10ms, show=1.39ms --> total=6.56 | sampling frequency (kHz) : 7.47
+// avg. loop: rms=1.35ms, set=4.10ms, show=1.41ms --> total=6.87 | Sampling Freq (kHz) : 7.47
+// avg. loop: rms=1.35ms, set=4.10ms, show=1.37ms --> total=6.83 | Sampling Freq (kHz) : 7.48
+// avg. loop: rms=1.35ms, set=4.11ms, show=1.41ms --> total=6.87 | Sampling Freq (kHz) : 7.47
+// avg. loop: rms=1.35ms, set=4.06ms, show=1.45ms --> total=6.87 | Sampling Freq (kHz) : 7.46
+// avg. loop: rms=1.35ms, set=0.07ms, show=1.42ms --> total=2.85 | Sampling Freq (kHz) : 7.47
+// avg. loop: rms=1.35ms, set=2.33ms, show=1.42ms --> total=5.09 | Sampling Freq (kHz) : 7.47
